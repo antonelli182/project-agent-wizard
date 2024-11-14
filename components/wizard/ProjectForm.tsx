@@ -97,6 +97,7 @@ export default function ProjectForm({ form }: { form: any }) {
       newDataSources = currentDataSources.filter((id: string) => id !== sourceId);
     } else {
       newDataSources = [...currentDataSources, sourceId];
+    }
 
     form.setValue('dataSources', ensureAtLeastOneDataSource(newDataSources));
   };
