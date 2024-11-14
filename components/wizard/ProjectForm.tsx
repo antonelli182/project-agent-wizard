@@ -257,7 +257,7 @@ export default function ProjectForm({ form }: { form: any }) {
                   onClick={(e) => {
                     e.stopPropagation(); // Prevent card click
                     const newSelections = { ...watchSportSelections };
-                    newSelections[dataSourceId] = selectedSports.filter(id => id !== sportId);
+                    newSelections[dataSourceId] = selectedSports.find((id: string) => id === sportId);
                     form.setValue('sportSelections', newSelections);
                   }}
                 >
