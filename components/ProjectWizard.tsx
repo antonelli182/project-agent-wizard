@@ -5,15 +5,17 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Loader2, Plus, Database, Bot } from 'lucide-react';
+import { Loader2, Plus, Database, Bot, CheckCircle, XCircle, Trash } from 'lucide-react';
 import { Form } from '@/components/ui/form';
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/hooks/use-toast';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
 import { Separator } from '@/components/ui/separator';
+import { Switch } from '@/components/ui/switch'; // Assuming you have a Switch component
 import ProjectForm from './wizard/ProjectForm';
 import AgentForm from './wizard/AgentForm';
+import { format } from 'date-fns'; // For date formatting
 
 const formSchema = z.object({
   projectName: z.string().min(3, 'Project name must be at least 3 characters'),
@@ -39,6 +41,7 @@ interface Agent {
   tools: string[];
   outputFormat: string;
   createdAt: Date;
+  active: boolean;
 }
 
 const sportEmojis: { [key: string]: string } = {
@@ -72,6 +75,11 @@ const formatOutputType = (type: string) => {
     chat: 'CHAT',
   };
   return types[type] || type.toUpperCase();
+};
+
+const generateEndpointURL = (projectName: string, agentId: string) => {
+  const formattedProjectName = projectName.toLowerCase().replace(/\s+/g, '-');
+  return `https://api.example.com/projects/${formattedProjectName}/agents/${agentId}`;
 };
 
 export default function ProjectWizard() {
@@ -118,6 +126,7 @@ export default function ProjectWizard() {
           tools: data.tools,
           outputFormat: data.outputFormat,
           createdAt: new Date(),
+          active: true,
         };
         setAgents([...agents, newAgent]);
         toast({
@@ -150,6 +159,22 @@ export default function ProjectWizard() {
       sports.forEach(sport => allSports.add(sport));
     });
     return Array.from(allSports);
+  };
+
+  const toggleAgentStatus = (agentId: string) => {
+    setAgents((prevAgents) =>
+      prevAgents.map((agent) =>
+        agent.id === agentId ? { ...agent, active: !agent.active } : agent
+      )
+    );
+  };
+
+  const deleteAgent = (agentId: string) => {
+    setAgents((prevAgents) => prevAgents.filter(agent => agent.id !== agentId));
+    toast({
+      title: 'Agent deleted',
+      description: 'The agent has been successfully removed.',
+    });
   };
 
   if (!projectCreated) {
@@ -288,7 +313,10 @@ export default function ProjectWizard() {
                           >
                             Cancel
                           </Button>
-                          <Button type="submit" disabled={isSubmitting}>
+                          <Button 
+                            type="submit" 
+                            disabled={isSubmitting || !form.getValues('agentType') || !form.getValues('outputFormat')}
+                          >
                             {isSubmitting ? (
                               <>
                                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -328,16 +356,43 @@ export default function ProjectWizard() {
                                     </h4>
                                   </div>
                                   <div className="flex gap-2 flex-wrap">
+                                    <Badge variant="outline">
+                                      {formatOutputType(agent.outputFormat)}
+                                    </Badge>
                                     {agent.tools.map((tool) => (
                                       <Badge key={tool} variant="outline">
                                         {formatToolName(tool)}
                                       </Badge>
                                     ))}
                                   </div>
+                                  <div className="text-sm text-muted-foreground">
+                                    <p>Created: {format(agent.createdAt, 'MMMM dd, yyyy')}</p>
+                                    <p>
+                                      Endpoint: 
+                                      <span className="text-blue-500 cursor-pointer" onClick={() => navigator.clipboard.writeText(generateEndpointURL(form.getValues('projectName'), agent.id))}>
+                                        {generateEndpointURL(form.getValues('projectName'), agent.id)}
+                                      </span>
+                                    </p>
+                                  </div>
                                 </div>
-                                <Badge>
-                                  {formatOutputType(agent.outputFormat)}
-                                </Badge>
+                                <div className="flex items-center gap-2">
+                                  <Switch
+                                    checked={agent.active}
+                                    onChange={() => toggleAgentStatus(agent.id)}
+                                  />
+                                  {agent.active ? (
+                                    <CheckCircle className="text-green-500 h-4 w-4" />
+                                  ) : (
+                                    <XCircle className="text-red-500 h-4 w-4" />
+                                  )}
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    onClick={() => deleteAgent(agent.id)}
+                                  >
+                                    <Trash className="h-4 w-4 text-red-500" />
+                                  </Button>
+                                </div>
                               </div>
                             </CardContent>
                           </Card>
