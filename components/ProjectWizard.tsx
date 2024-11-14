@@ -225,7 +225,7 @@ export default function ProjectWizard() {
 
               <div className="grid gap-4">
                 <div>
-                  <h3 className="text-sm font-medium text-muted-foreground mb-2">Data Sources</h3>
+                  <h3 className="text-sm font-medium text-muted-foreground mb-2">Sport Data Sources</h3>
                   <div className="flex gap-2">
                     {form.getValues('dataSources').map((source) => (
                       <div key={source} className="flex items-center gap-1.5">
@@ -237,7 +237,7 @@ export default function ProjectWizard() {
                 </div>
 
                 <div>
-                  <h3 className="text-sm font-medium text-muted-foreground mb-2">Sports</h3>
+                  <h3 className="text-sm font-medium text-muted-foreground mb-2">Sports Synchronized</h3>
                   <div className="flex gap-2 flex-wrap">
                     {getAllSelectedSports().map((sport) => (
                       <Badge key={sport} variant="secondary" className="flex items-center gap-1">

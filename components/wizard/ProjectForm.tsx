@@ -1,7 +1,9 @@
 'use client';
 
-import { useState } from 'react';
-import { Check, ChevronsUpDown, Database, AlertCircle, Search, Key } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { Check, Search, Key, Activity, Database, AlertCircle } from 'lucide-react';
+import { toast } from '@/hooks/use-toast';
+
 import {
   FormField,
   FormItem,
@@ -19,18 +21,13 @@ import {
   DialogTrigger,
   DialogFooter,
 } from '@/components/ui/dialog';
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from '@/components/ui/tooltip';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Separator } from '@/components/ui/separator';
 import { cn } from '@/lib/utils';
+import { useWatch } from 'react-hook-form';
 
 const sports = [
   { id: 'football', name: 'American Football', emoji: '🏈' },
@@ -70,31 +67,47 @@ const dataSources = [
 ] as const;
 
 export default function ProjectForm({ form }: { form: any }) {
-  const [isOpen, setIsOpen] = useState(false);
-  const [searchQuery, setSearchQuery] = useState('');
+  const [openModals, setOpenModals] = useState<{ [key: string]: boolean }>({});
   const [currentDataSource, setCurrentDataSource] = useState<string | null>(null);
   const [tempSelectedSports, setTempSelectedSports] = useState<SportId[]>([]);
   const [isApiKeyModalOpen, setIsApiKeyModalOpen] = useState(false);
   const [apiKey, setApiKey] = useState('');
   const [sportradarConnected, setSportradarConnected] = useState(false);
-  
-  const watchDataSources = form.watch('dataSources') || [];
-  const watchSportSelections = form.watch('sportSelections') || {};
+  const [searchQuery, setSearchQuery] = useState('');
+
+  const watchDataSources = useWatch({ control: form.control, name: 'dataSources' }) || [];
+  const watchSportSelections = useWatch({ control: form.control, name: 'sportSelections' }) || {};
+
+  const ensureAtLeastOneDataSource = (dataSources: string[]) => {
+    if (dataSources.length === 0) {
+      return ['machina-core'];
+    }
+    return dataSources;
+  };
+
+  const handleDataSourceChange = (sourceId: string) => {
+    if (sourceId === 'sportradar' && !sportradarConnected) {
+      return; // Prevent selection if not authenticated
+    }
+
+    const currentDataSources = form.getValues('dataSources') || [];
+    let newDataSources;
+
+    if (currentDataSources.includes(sourceId)) {
+      newDataSources = currentDataSources.filter(id => id !== sourceId);
+    } else {
+      newDataSources = [...currentDataSources, sourceId];
+    }
+
+    form.setValue('dataSources', ensureAtLeastOneDataSource(newDataSources));
+  };
 
   const handleDialogOpen = (open: boolean, dataSourceId?: string) => {
     if (open && dataSourceId) {
       setCurrentDataSource(dataSourceId);
       setTempSelectedSports(watchSportSelections[dataSourceId] || []);
     }
-    setIsOpen(open);
-  };
-
-  const handleSelectAll = () => {
-    if (tempSelectedSports.length === sports.length) {
-      setTempSelectedSports([]);
-    } else {
-      setTempSelectedSports(sports.map(sport => sport.id));
-    }
+    setOpenModals((prev) => ({ ...prev, [dataSourceId || '']: open }));
   };
 
   const handleSportSelect = (sportId: SportId) => {
@@ -112,17 +125,14 @@ export default function ProjectForm({ form }: { form: any }) {
       currentSelections[currentDataSource] = tempSelectedSports;
       form.setValue('sportSelections', currentSelections);
     }
-    setIsOpen(false);
+    setOpenModals((prev) => ({ ...prev, [currentDataSource || '']: false }));
   };
 
   const handleApiKeySubmit = () => {
     if (apiKey.trim()) {
       setSportradarConnected(true);
-      const newDataSources = [...watchDataSources];
-      if (!newDataSources.includes('sportradar')) {
-        newDataSources.push('sportradar');
-        form.setValue('dataSources', newDataSources);
-      }
+      const newDataSources = [...watchDataSources, 'sportradar'];
+      form.setValue('dataSources', ensureAtLeastOneDataSource(newDataSources));
       setIsApiKeyModalOpen(false);
       toast({
         title: 'Sportradar Connected',
@@ -131,28 +141,41 @@ export default function ProjectForm({ form }: { form: any }) {
     }
   };
 
-  const filteredSports = sports.filter(sport =>
-    sport.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    sport.id.toLowerCase().includes(searchQuery.toLowerCase())
-  );
+  // Form validation to ensure sports are selected for each data source
+  useEffect(() => {
+    let hasError = false;
+
+    watchDataSources.forEach((sourceId: string) => {
+      const selectedSports = watchSportSelections[sourceId] || [];
+      if (selectedSports.length === 0) {
+        hasError = true;
+      }
+    });
+
+    if (hasError) {
+      form.setError('dataSources', { type: 'manual', message: 'Please select sports for all selected data sources.' });
+    } else {
+      form.clearErrors('dataSources');
+    }
+  }, [watchDataSources, watchSportSelections, form]);
 
   const renderSportsSelection = (dataSourceId: string) => {
     const selectedSports = watchSportSelections[dataSourceId] || [];
-    
+
     return (
       <div className="mt-4 space-y-4">
-        <div className="flex items-center justify-between">
-          <FormLabel className="text-sm font-medium text-muted-foreground">Sports Selection</FormLabel>
-          <Dialog open={isOpen && currentDataSource === dataSourceId} onOpenChange={(open) => handleDialogOpen(open, dataSourceId)}>
+        <div className="flex items-center justify-start gap-4">
+          <Dialog open={openModals[dataSourceId]} onOpenChange={(open) => handleDialogOpen(open, dataSourceId)}>
             <DialogTrigger asChild>
-              <Button variant="outline" size="sm">
+              <Button variant="outline" size="sm" onClick={(e) => e.stopPropagation()}>
                 <Search className="h-4 w-4 mr-2" />
-                {selectedSports.length > 0
-                  ? `${selectedSports.length} sport${selectedSports.length === 1 ? '' : 's'} selected`
-                  : 'Select sports'}
+                Choose Sports
               </Button>
             </DialogTrigger>
-            <DialogContent className="max-w-xl">
+            <DialogContent
+              className="max-w-3xl"
+              onClick={(e) => e.stopPropagation()}
+            >
               <DialogHeader>
                 <DialogTitle>Select Sports for {dataSourceId === 'machina-core' ? 'Machina Core' : 'Sportradar'}</DialogTitle>
               </DialogHeader>
@@ -163,27 +186,21 @@ export default function ProjectForm({ form }: { form: any }) {
                     placeholder="Search sports..."
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
-                    className="flex-1"
                   />
-                  <Button
-                    variant="outline"
-                    onClick={handleSelectAll}
-                    className="whitespace-nowrap"
-                  >
-                    {tempSelectedSports.length === sports.length ? 'Deselect All' : 'Select All'}
-                  </Button>
                 </div>
-                
-                <ScrollArea className="h-[300px]">
-                  <div className="pr-4 space-y-2">
-                    {filteredSports.map((sport) => {
+                <ScrollArea className="h-48">
+                  <div className="space-y-2">
+                    {sports.filter(sport =>
+                      sport.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                      sport.id.toLowerCase().includes(searchQuery.toLowerCase())
+                    ).map((sport) => {
                       const isSelected = tempSelectedSports.includes(sport.id);
                       return (
                         <div
                           key={sport.id}
                           className={cn(
-                            'flex items-center gap-2 p-3 rounded-md cursor-pointer transition-colors',
-                            isSelected ? 'bg-primary/10' : 'hover:bg-muted'
+                            'flex items-center gap-2 p-2 rounded-md cursor-pointer',
+                            isSelected ? 'bg-primary text-primary-foreground' : 'hover:bg-muted'
                           )}
                           onClick={() => handleSportSelect(sport.id)}
                         >
@@ -202,12 +219,12 @@ export default function ProjectForm({ form }: { form: any }) {
                 </ScrollArea>
 
                 <Separator />
-                
+
                 <DialogFooter>
                   <div className="flex justify-between w-full">
                     <Button
                       variant="outline"
-                      onClick={() => setIsOpen(false)}
+                      onClick={() => setOpenModals((prev) => ({ ...prev, [dataSourceId]: false }))}
                     >
                       Cancel
                     </Button>
@@ -222,6 +239,10 @@ export default function ProjectForm({ form }: { form: any }) {
               </div>
             </DialogContent>
           </Dialog>
+
+          <p className="text-sm text-muted-foreground">
+            Choose the sports you want to include for {dataSourceId === 'machina-core' ? 'Machina Core' : 'Sportradar'}.
+          </p>
         </div>
 
         {selectedSports.length > 0 && (
@@ -229,11 +250,12 @@ export default function ProjectForm({ form }: { form: any }) {
             {selectedSports.map((sportId: SportId) => {
               const sport = sports.find((s) => s.id === sportId);
               return (
-                <Badge 
-                  key={sportId} 
+                <Badge
+                  key={sportId}
                   variant="secondary"
                   className="cursor-pointer hover:bg-destructive hover:text-destructive-foreground"
-                  onClick={() => {
+                  onClick={(e) => {
+                    e.stopPropagation(); // Prevent card click
                     const newSelections = { ...watchSportSelections };
                     newSelections[dataSourceId] = selectedSports.filter(id => id !== sportId);
                     form.setValue('sportSelections', newSelections);
@@ -280,15 +302,23 @@ export default function ProjectForm({ form }: { form: any }) {
               {dataSources.map((source) => {
                 const isActive = source.id === 'machina-core' || sportradarConnected;
                 const isSelected = field.value?.includes(source.id);
+                const selectedSports = watchSportSelections[source.id] || [];
+                const isConnected = isSelected && isActive && selectedSports.length > 0;
+                const needsSportsSelection = isSelected && isActive && selectedSports.length === 0;
 
                 return (
                   <div key={source.id} className="space-y-4">
                     <Card
                       className={cn(
-                        'transition-colors',
-                        source.id === 'sportradar' && !sportradarConnected ? 'opacity-80' : '',
-                        isSelected && 'border-primary'
+                        'transition-colors relative',
+                        isConnected
+                          ? 'border-green-500 bg-green-50'
+                          : isSelected
+                            ? 'border-primary bg-primary/10'
+                            : 'border-border bg-background',
+                        isActive ? 'hover:shadow-lg cursor-pointer' : 'cursor-default'
                       )}
+                      onClick={isActive ? () => handleDataSourceChange(source.id) : undefined}
                     >
                       <CardContent className="p-4">
                         <div className="flex items-start gap-4">
@@ -296,48 +326,64 @@ export default function ProjectForm({ form }: { form: any }) {
                           <div className="flex-1 space-y-1">
                             <div className="flex items-center justify-between">
                               <h4 className="font-medium">{source.name}</h4>
-                              {source.id === 'sportradar' && (
+
+                              {source.id === 'sportradar' && !sportradarConnected && (
+                                <Dialog open={isApiKeyModalOpen} onOpenChange={setIsApiKeyModalOpen}>
+                                  <DialogTrigger asChild>
+                                    <Button
+                                      variant="primary"
+                                      size="sm"
+                                      className="bg-blue-500 text-white hover:bg-blue-600"
+                                      onClick={(e) => e.stopPropagation()}
+                                    >
+                                      <Key className="h-4 w-4 mr-2" />
+                                      Add API Key
+                                    </Button>
+                                  </DialogTrigger>
+                                  <DialogContent onClick={(e) => e.stopPropagation()}>
+                                    <DialogHeader>
+                                      <DialogTitle>Connect Sportradar</DialogTitle>
+                                    </DialogHeader>
+                                    <div className="space-y-4 py-4">
+                                      <FormItem>
+                                        <FormLabel>API Key</FormLabel>
+                                        <FormControl>
+                                          <Input
+                                            placeholder="Enter your Sportradar API key"
+                                            value={apiKey}
+                                            onChange={(e) => setApiKey(e.target.value)}
+                                          />
+                                        </FormControl>
+                                        <FormDescription>
+                                          You can find your API key in the Sportradar dashboard
+                                        </FormDescription>
+                                      </FormItem>
+                                    </div>
+                                    <DialogFooter>
+                                      <Button variant="outline" onClick={() => setIsApiKeyModalOpen(false)}>
+                                        Cancel
+                                      </Button>
+                                      <Button onClick={handleApiKeySubmit} disabled={!apiKey.trim()}>
+                                        Connect
+                                      </Button>
+                                    </DialogFooter>
+                                  </DialogContent>
+                                </Dialog>
+                              )}
+                              {isConnected && (
                                 <div className="flex items-center gap-2">
-                                  {sportradarConnected ? (
-                                    <Badge variant="secondary">Connected</Badge>
-                                  ) : (
-                                    <Dialog open={isApiKeyModalOpen} onOpenChange={setIsApiKeyModalOpen}>
-                                      <DialogTrigger asChild>
-                                        <Button variant="outline" size="sm">
-                                          <Key className="h-4 w-4 mr-2" />
-                                          Add API Key
-                                        </Button>
-                                      </DialogTrigger>
-                                      <DialogContent>
-                                        <DialogHeader>
-                                          <DialogTitle>Connect Sportradar</DialogTitle>
-                                        </DialogHeader>
-                                        <div className="space-y-4 py-4">
-                                          <FormItem>
-                                            <FormLabel>API Key</FormLabel>
-                                            <FormControl>
-                                              <Input
-                                                placeholder="Enter your Sportradar API key"
-                                                value={apiKey}
-                                                onChange={(e) => setApiKey(e.target.value)}
-                                              />
-                                            </FormControl>
-                                            <FormDescription>
-                                              You can find your API key in the Sportradar dashboard
-                                            </FormDescription>
-                                          </FormItem>
-                                        </div>
-                                        <DialogFooter>
-                                          <Button variant="outline" onClick={() => setIsApiKeyModalOpen(false)}>
-                                            Cancel
-                                          </Button>
-                                          <Button onClick={handleApiKeySubmit} disabled={!apiKey.trim()}>
-                                            Connect
-                                          </Button>
-                                        </DialogFooter>
-                                      </DialogContent>
-                                    </Dialog>
-                                  )}
+                                  <Badge variant="success">
+                                    <Activity className="h-4 w-4 mr-1" />
+                                    Connected
+                                  </Badge>
+                                </div>
+                              )}
+                              {needsSportsSelection && (
+                                <div className="flex items-center gap-2">
+                                  <Badge variant="destructive">
+                                    <AlertCircle className="h-4 w-4 mr-1" />
+                                    Select Sports
+                                  </Badge>
                                 </div>
                               )}
                             </div>
@@ -346,10 +392,19 @@ export default function ProjectForm({ form }: { form: any }) {
                             </p>
                           </div>
                         </div>
+
+                        {isSelected && isActive && (
+                          <div className="mt-4">
+                            {renderSportsSelection(source.id)}
+                          </div>
+                        )}
+
+                        {/* Overlay for inactive data sources (excluding the "Add API Key" button) */}
+                        {!isActive && (
+                          <div className="absolute top-0 left-0 w-full h-full bg-white opacity-70 cursor-not-allowed pointer-events-none"></div>
+                        )}
                       </CardContent>
                     </Card>
-
-                    {isSelected && isActive && renderSportsSelection(source.id)}
                   </div>
                 );
               })}
