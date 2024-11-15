@@ -1,9 +1,8 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { Check, Search, Key, Activity, Database, AlertCircle } from 'lucide-react';
 import { toast } from '@/hooks/use-toast';
-
 import {
   FormField,
   FormItem,
@@ -20,6 +19,7 @@ import {
   DialogTitle,
   DialogTrigger,
   DialogFooter,
+  DialogClose,
 } from '@/components/ui/dialog';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -27,7 +27,8 @@ import { Card, CardContent } from '@/components/ui/card';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Separator } from '@/components/ui/separator';
 import { cn } from '@/lib/utils';
-import { useWatch } from 'react-hook-form';
+import { useWatch, UseFormReturn } from 'react-hook-form';
+import * as z from 'zod';
 
 const sports = [
   { id: 'football', name: 'American Football', emoji: '🏈' },
@@ -43,11 +44,6 @@ const sports = [
 ] as const;
 
 type SportId = typeof sports[number]['id'];
-
-interface SportSelectionState {
-  'machina-core': SportId[];
-  'sportradar': SportId[];
-}
 
 const dataSources = [
   {
@@ -66,7 +62,21 @@ const dataSources = [
   },
 ] as const;
 
-export default function ProjectForm({ form }: { form: any }) {
+// Form schema
+const projectFormSchema = z.object({
+  projectName: z.string().min(1, 'Project name is required'),
+  dataSources: z.array(z.string()).min(1, 'At least one data source is required'),
+  sportSelections: z.record(z.array(z.string()).min(1, 'At least one sport is required')),
+});
+
+type ProjectFormData = z.infer<typeof projectFormSchema>;
+
+interface ProjectFormProps {
+  form: UseFormReturn<ProjectFormData>;
+}
+
+export default function ProjectForm({ form }: ProjectFormProps) {
+  // State
   const [openModals, setOpenModals] = useState<{ [key: string]: boolean }>({});
   const [currentDataSource, setCurrentDataSource] = useState<string | null>(null);
   const [tempSelectedSports, setTempSelectedSports] = useState<SportId[]>([]);
@@ -74,90 +84,140 @@ export default function ProjectForm({ form }: { form: any }) {
   const [apiKey, setApiKey] = useState('');
   const [sportradarConnected, setSportradarConnected] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
 
-  const watchDataSources = useWatch({ control: form.control, name: 'dataSources' }) || [];
-  const watchSportSelections = useWatch({ control: form.control, name: 'sportSelections' }) || {};
+  // Form watchers
+  const watchDataSources = useWatch({
+    control: form.control,
+    name: 'dataSources',
+  }) as string[] || [];
 
-  const ensureAtLeastOneDataSource = (dataSources: string[]) => {
-    if (dataSources.length === 0) {
-      return ['machina-core'];
+  const watchSportSelections = useWatch({
+    control: form.control,
+    name: 'sportSelections',
+  }) as Record<string, SportId[]> || {};
+
+  // Validation effect
+  useEffect(() => {
+    if (watchDataSources.length === 0) {
+      form.clearErrors('sportSelections');
+      return;
     }
-    return dataSources;
-  };
 
-  const handleDataSourceChange = (sourceId: string) => {
-    if (sourceId === 'sportradar' && !sportradarConnected) {
-      return; // Prevent selection if not authenticated
-    }
+    const hasErrors = watchDataSources.some((sourceId) => {
+      const selectedSports = watchSportSelections[sourceId] || [];
+      return selectedSports.length === 0;
+    });
 
-    const currentDataSources = form.getValues('dataSources') || [];
-    let newDataSources;
-
-    if (currentDataSources.includes(sourceId)) {
-      newDataSources = currentDataSources.filter((id: string) => id !== sourceId);
+    if (hasErrors) {
+      form.setError('sportSelections', {
+        type: 'custom',
+        message: 'Please select sports for all selected data sources',
+      });
     } else {
-      newDataSources = [...currentDataSources, sourceId];
+      form.clearErrors('sportSelections');
     }
+  }, [watchDataSources, watchSportSelections, form]);
 
-    form.setValue('dataSources', ensureAtLeastOneDataSource(newDataSources));
-  };
+  // Handlers
+  const handleDataSourceChange = useCallback(
+    (sourceId: string) => {
+      if (sourceId === 'sportradar' && !sportradarConnected) {
+        return;
+      }
 
-  const handleDialogOpen = (open: boolean, dataSourceId?: string) => {
-    if (open && dataSourceId) {
-      setCurrentDataSource(dataSourceId);
-      setTempSelectedSports(watchSportSelections[dataSourceId] || []);
-    }
-    setOpenModals((prev) => ({ ...prev, [dataSourceId || '']: open }));
-  };
+      const currentDataSources = form.getValues('dataSources') || [];
+      let newDataSources: string[];
 
-  const handleSportSelect = (sportId: SportId) => {
-    setTempSelectedSports(current => {
+      if (currentDataSources.includes(sourceId)) {
+        newDataSources = currentDataSources.filter((id) => id !== sourceId);
+        // Clear sports selections when removing a data source
+        const newSportSelections = { ...watchSportSelections };
+        delete newSportSelections[sourceId];
+        form.setValue('sportSelections', newSportSelections);
+      } else {
+        newDataSources = [...currentDataSources, sourceId];
+      }
+
+      form.setValue('dataSources', newDataSources);
+    },
+    [form, sportradarConnected, watchSportSelections]
+  );
+
+  const handleDialogOpen = useCallback(
+    (open: boolean, dataSourceId?: string) => {
+      if (open && dataSourceId) {
+        setCurrentDataSource(dataSourceId);
+        setTempSelectedSports(watchSportSelections[dataSourceId] || []);
+        setSearchQuery('');
+      } else {
+        setCurrentDataSource(null);
+        setTempSelectedSports([]);
+        setSearchQuery('');
+      }
+      setOpenModals((prev) => ({ ...prev, [dataSourceId || '']: open }));
+    },
+    [watchSportSelections]
+  );
+
+  const handleSportSelect = useCallback((sportId: SportId) => {
+    setTempSelectedSports((current) => {
       if (current.includes(sportId)) {
-        return current.filter(id => id !== sportId);
+        return current.filter((id) => id !== sportId);
       }
       return [...current, sportId];
     });
-  };
+  }, []);
 
-  const handleConfirm = () => {
+  const handleConfirm = useCallback(() => {
     if (currentDataSource) {
       const currentSelections = { ...watchSportSelections };
       currentSelections[currentDataSource] = tempSelectedSports;
       form.setValue('sportSelections', currentSelections);
     }
     setOpenModals((prev) => ({ ...prev, [currentDataSource || '']: false }));
-  };
+  }, [currentDataSource, tempSelectedSports, watchSportSelections, form]);
 
-  const handleApiKeySubmit = () => {
-    if (apiKey.trim()) {
+  const handleApiKeySubmit = async () => {
+    const trimmedApiKey = apiKey.trim();
+    if (!trimmedApiKey) return;
+
+    try {
+      setIsLoading(true);
+      // Simulate API call to verify API key
+      await new Promise((resolve) => setTimeout(resolve, 1000));
       setSportradarConnected(true);
-      const newDataSources = [...watchDataSources, 'sportradar'];
-      form.setValue('dataSources', ensureAtLeastOneDataSource(newDataSources));
+      if (!watchDataSources.includes('sportradar')) {
+        form.setValue('dataSources', [...watchDataSources, 'sportradar']);
+      }
       setIsApiKeyModalOpen(false);
+      setApiKey('');
       toast({
         title: 'Sportradar Connected',
         description: 'Your API key has been saved successfully.',
       });
+    } catch (error) {
+      toast({
+        title: 'Connection Failed',
+        description:
+          error instanceof Error ? error.message : 'Please check your API key and try again.',
+        variant: 'destructive',
+      });
+    } finally {
+      setIsLoading(false);
     }
   };
 
-  // Form validation to ensure sports are selected for each data source
-  useEffect(() => {
-    let hasError = false;
-
-    watchDataSources.forEach((sourceId: string) => {
-      const selectedSports = watchSportSelections[sourceId] || [];
-      if (selectedSports.length === 0) {
-        hasError = true;
-      }
-    });
-
-    if (hasError) {
-      form.setError('dataSources', { type: 'manual', message: 'Please select sports for all selected data sources.' });
-    } else {
-      form.clearErrors('dataSources');
-    }
-  }, [watchDataSources, watchSportSelections, form]);
+  // Memoized filtered sports
+  const filteredSports = useMemo(
+    () =>
+      sports.filter(
+        (sport) =>
+          sport.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+          sport.id.toLowerCase().includes(searchQuery.toLowerCase())
+      ),
+    [searchQuery]
+  );
 
   const renderSportsSelection = (dataSourceId: string) => {
     const selectedSports = watchSportSelections[dataSourceId] || [];
@@ -165,19 +225,22 @@ export default function ProjectForm({ form }: { form: any }) {
     return (
       <div className="mt-4 space-y-4">
         <div className="flex items-center justify-start gap-4">
-          <Dialog open={openModals[dataSourceId]} onOpenChange={(open) => handleDialogOpen(open, dataSourceId)}>
+          <Dialog
+            open={openModals[dataSourceId]}
+            onOpenChange={(open) => handleDialogOpen(open, dataSourceId)}
+          >
             <DialogTrigger asChild>
               <Button variant="outline" size="sm" onClick={(e) => e.stopPropagation()}>
                 <Search className="h-4 w-4 mr-2" />
                 Choose Sports
               </Button>
             </DialogTrigger>
-            <DialogContent
-              className="max-w-3xl"
-              onClick={(e) => e.stopPropagation()}
-            >
+            <DialogContent className="max-w-3xl" onClick={(e) => e.stopPropagation()}>
               <DialogHeader>
-                <DialogTitle>Select Sports for {dataSourceId === 'machina-core' ? 'Machina Core' : 'Sportradar'}</DialogTitle>
+                <DialogTitle>
+                  Select Sports for{' '}
+                  {dataSourceId === 'machina-core' ? 'Machina Core' : 'Sportradar'}
+                </DialogTitle>
               </DialogHeader>
               <div className="flex flex-col gap-4">
                 <div className="flex items-center gap-2">
@@ -190,25 +253,28 @@ export default function ProjectForm({ form }: { form: any }) {
                 </div>
                 <ScrollArea className="h-48">
                   <div className="space-y-2">
-                    {sports.filter(sport =>
-                      sport.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                      sport.id.toLowerCase().includes(searchQuery.toLowerCase())
-                    ).map((sport) => {
+                    {filteredSports.map((sport) => {
                       const isSelected = tempSelectedSports.includes(sport.id);
                       return (
                         <div
                           key={sport.id}
                           className={cn(
                             'flex items-center gap-2 p-2 rounded-md cursor-pointer',
-                            isSelected ? 'bg-primary text-primary-foreground' : 'hover:bg-muted'
+                            isSelected
+                              ? 'bg-primary text-primary-foreground'
+                              : 'hover:bg-muted'
                           )}
                           onClick={() => handleSportSelect(sport.id)}
                         >
-                          <div className={cn(
-                            'w-4 h-4 rounded-sm border flex items-center justify-center',
-                            isSelected ? 'bg-primary border-primary' : 'border-input'
-                          )}>
-                            {isSelected && <Check className="h-3 w-3 text-primary-foreground" />}
+                          <div
+                            className={cn(
+                              'w-4 h-4 rounded-sm border flex items-center justify-center',
+                              isSelected ? 'bg-primary border-primary' : 'border-input'
+                            )}
+                          >
+                            {isSelected && (
+                              <Check className="h-3 w-3 text-primary-foreground" />
+                            )}
                           </div>
                           <span className="w-6">{sport.emoji}</span>
                           <span className="flex-1">{sport.name}</span>
@@ -222,12 +288,9 @@ export default function ProjectForm({ form }: { form: any }) {
 
                 <DialogFooter>
                   <div className="flex justify-between w-full">
-                    <Button
-                      variant="outline"
-                      onClick={() => setOpenModals((prev) => ({ ...prev, [dataSourceId]: false }))}
-                    >
-                      Cancel
-                    </Button>
+                    <DialogClose asChild>
+                      <Button variant="outline">Cancel</Button>
+                    </DialogClose>
                     <Button
                       onClick={handleConfirm}
                       disabled={tempSelectedSports.length === 0}
@@ -241,7 +304,8 @@ export default function ProjectForm({ form }: { form: any }) {
           </Dialog>
 
           <p className="text-sm text-muted-foreground">
-            Choose the sports you want to include for {dataSourceId === 'machina-core' ? 'Machina Core' : 'Sportradar'}.
+            Choose the sports you want to include for{' '}
+            {dataSourceId === 'machina-core' ? 'Machina Core' : 'Sportradar'}.
           </p>
         </div>
 
@@ -255,9 +319,12 @@ export default function ProjectForm({ form }: { form: any }) {
                   variant="secondary"
                   className="cursor-pointer hover:bg-destructive hover:text-destructive-foreground"
                   onClick={(e) => {
-                    e.stopPropagation(); // Prevent card click
+                    e.preventDefault();
+                    e.stopPropagation();
                     const newSelections = { ...watchSportSelections };
-                    newSelections[dataSourceId] = selectedSports.find((id: string) => id === sportId);
+                    newSelections[dataSourceId] = selectedSports.filter(
+                      (id: SportId) => id !== sportId
+                    );
                     form.setValue('sportSelections', newSelections);
                   }}
                 >
@@ -304,7 +371,8 @@ export default function ProjectForm({ form }: { form: any }) {
                 const isSelected = field.value?.includes(source.id);
                 const selectedSports = watchSportSelections[source.id] || [];
                 const isConnected = isSelected && isActive && selectedSports.length > 0;
-                const needsSportsSelection = isSelected && isActive && selectedSports.length === 0;
+                const needsSportsSelection =
+                  isSelected && isActive && selectedSports.length === 0;
 
                 return (
                   <div key={source.id} className="space-y-4">
@@ -314,8 +382,8 @@ export default function ProjectForm({ form }: { form: any }) {
                         isConnected
                           ? 'border-green-500 bg-green-50'
                           : isSelected
-                            ? 'border-primary bg-primary/10'
-                            : 'border-border bg-background',
+                          ? 'border-primary bg-primary/10'
+                          : 'border-border bg-background',
                         isActive ? 'hover:shadow-lg cursor-pointer' : 'cursor-default'
                       )}
                       onClick={isActive ? () => handleDataSourceChange(source.id) : undefined}
@@ -328,7 +396,10 @@ export default function ProjectForm({ form }: { form: any }) {
                               <h4 className="font-medium">{source.name}</h4>
 
                               {source.id === 'sportradar' && !sportradarConnected && (
-                                <Dialog open={isApiKeyModalOpen} onOpenChange={setIsApiKeyModalOpen}>
+                                <Dialog
+                                  open={isApiKeyModalOpen}
+                                  onOpenChange={setIsApiKeyModalOpen}
+                                >
                                   <DialogTrigger asChild>
                                     <Button
                                       variant="primary"
@@ -360,11 +431,14 @@ export default function ProjectForm({ form }: { form: any }) {
                                       </FormItem>
                                     </div>
                                     <DialogFooter>
-                                      <Button variant="outline" onClick={() => setIsApiKeyModalOpen(false)}>
-                                        Cancel
-                                      </Button>
-                                      <Button onClick={handleApiKeySubmit} disabled={!apiKey.trim()}>
-                                        Connect
+                                      <DialogClose asChild>
+                                        <Button variant="outline">Cancel</Button>
+                                      </DialogClose>
+                                      <Button
+                                        onClick={handleApiKeySubmit}
+                                        disabled={!apiKey.trim() || isLoading}
+                                      >
+                                        {isLoading ? 'Connecting...' : 'Connect'}
                                       </Button>
                                     </DialogFooter>
                                   </DialogContent>
@@ -394,14 +468,15 @@ export default function ProjectForm({ form }: { form: any }) {
                         </div>
 
                         {isSelected && isActive && (
-                          <div className="mt-4">
-                            {renderSportsSelection(source.id)}
-                          </div>
+                          <div className="mt-4">{renderSportsSelection(source.id)}</div>
                         )}
 
                         {/* Overlay for inactive data sources (excluding the "Add API Key" button) */}
                         {!isActive && (
-                          <div className="absolute top-0 left-0 w-full h-full bg-white opacity-70 cursor-not-allowed pointer-events-none"></div>
+                          <div
+                            className="absolute inset-0 bg-white opacity-70 cursor-not-allowed pointer-events-none"
+                            style={{ top: '3rem' }}
+                          ></div>
                         )}
                       </CardContent>
                     </Card>
