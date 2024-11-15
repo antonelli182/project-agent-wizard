@@ -153,10 +153,10 @@ export default function ProjectWizard() {
   };
 
   const getAllSelectedSports = () => {
-    const sportSelections = form.getValues('sportSelections');
+    const sportSelections = form.getValues('sportSelections') ?? {};
     const allSports = new Set<string>();
-    Object.values(sportSelections).forEach(sports => {
-      sports.forEach(sport => allSports.add(sport));
+    Object.values(sportSelections).forEach((sports) => {
+      sports.forEach((sport) => allSports.add(sport));
     });
     return Array.from(allSports);
   };
