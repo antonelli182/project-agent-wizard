@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { useForm } from 'react-hook-form';
+import { useForm, UseFormReturn } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -101,12 +101,12 @@ export default function ProjectWizard() {
   });
 
   // Create a separate form object for ProjectForm with only the expected fields
-  const projectForm = {
-    control: form.control,
-    getValues: form.getValues,
-    setValue: form.setValue,
-    clearErrors: form.clearErrors,
-    setError: form.setError,
+  const projectForm: UseFormReturn<ProjectFormData> = {
+    ...form,
+    watch: form.watch,
+    getFieldState: form.getFieldState,
+    trigger: form.trigger,
+    formState: form.formState,
   };
 
   const onSubmit = async (data: FormValues) => {
