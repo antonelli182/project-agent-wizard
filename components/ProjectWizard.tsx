@@ -100,6 +100,15 @@ export default function ProjectWizard() {
     },
   });
 
+  // Create a separate form object for ProjectForm with only the expected fields
+  const projectForm = {
+    control: form.control,
+    getValues: form.getValues,
+    setValue: form.setValue,
+    clearErrors: form.clearErrors,
+    setError: form.setError,
+  };
+
   const onSubmit = async (data: FormValues) => {
     setIsSubmitting(true);
     try {
@@ -190,7 +199,7 @@ export default function ProjectWizard() {
         <div className="bg-card rounded-lg border shadow-sm p-6">
           <Form {...form}>
             <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-8">
-              <ProjectForm form={form} />
+              <ProjectForm form={projectForm} />
               <div className="pt-6 border-t">
                 <Button 
                   type="submit" 
