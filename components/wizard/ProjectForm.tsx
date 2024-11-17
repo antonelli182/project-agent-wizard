@@ -218,10 +218,9 @@ export default function ProjectForm({ form }: ProjectFormProps) {
       ),
     [searchQuery]
   );
-
   const renderSportsSelection = (dataSourceId: string) => {
     const selectedSports = watchSportSelections[dataSourceId] || [];
-
+  
     return (
       <div className="mt-4 space-y-4">
         <div className="flex items-center justify-start gap-4">
@@ -235,49 +234,40 @@ export default function ProjectForm({ form }: ProjectFormProps) {
                 Choose Sports
               </Button>
             </DialogTrigger>
-            <DialogContent className="max-w-3xl" onClick={(e) => e.stopPropagation()}>
+            <DialogContent className="max-w-5xl h-[600px]" onClick={(e) => e.stopPropagation()}>
               <DialogHeader>
                 <DialogTitle>
-                  Select Sports for{' '}
-                  {dataSourceId === 'machina-core' ? 'Machina Core' : 'Sportradar'}
+                  Select Sports for {dataSourceId === 'machina-core' ? 'Machina Core' : 'Sportradar'}
                 </DialogTitle>
               </DialogHeader>
               <div className="flex flex-col gap-4">
-                <div className="flex items-center gap-2">
-                  <Search className="h-4 w-4 text-muted-foreground" />
-                  <Input
-                    placeholder="Search sports..."
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                  />
+                <div className="bg-white z-10 p-4">
+                  <div className="flex items-center gap-2">
+                    <Search className="h-4 w-4 text-muted-foreground" />
+                    <Input
+                      placeholder="Search sports..."
+                      value={searchQuery}
+                      onChange={(e) => setSearchQuery(e.target.value)}
+                    />
+                  </div>
                 </div>
-                <ScrollArea className="h-48">
-                  <div className="space-y-2">
+                <ScrollArea className="flex-grow overflow-y-auto">
+                  <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
                     {filteredSports.map((sport) => {
                       const isSelected = tempSelectedSports.includes(sport.id);
                       return (
                         <div
                           key={sport.id}
                           className={cn(
-                            'flex items-center gap-2 p-2 rounded-md cursor-pointer',
+                            'flex flex-col items-center p-4 rounded-md cursor-pointer border',
                             isSelected
-                              ? 'bg-primary text-primary-foreground'
-                              : 'hover:bg-muted'
+                              ? 'bg-primary text-primary-foreground border-primary'
+                              : 'hover:bg-muted border-input'
                           )}
                           onClick={() => handleSportSelect(sport.id)}
                         >
-                          <div
-                            className={cn(
-                              'w-4 h-4 rounded-sm border flex items-center justify-center',
-                              isSelected ? 'bg-primary border-primary' : 'border-input'
-                            )}
-                          >
-                            {isSelected && (
-                              <Check className="h-3 w-3 text-primary-foreground" />
-                            )}
-                          </div>
-                          <span className="w-6">{sport.emoji}</span>
-                          <span className="flex-1">{sport.name}</span>
+                          <div className="text-3xl">{sport.emoji}</div>
+                          <span className="mt-2 text-center">{sport.name}</span>
                         </div>
                       );
                     })}
@@ -302,13 +292,13 @@ export default function ProjectForm({ form }: ProjectFormProps) {
               </div>
             </DialogContent>
           </Dialog>
-
+  
           <p className="text-sm text-muted-foreground">
             Choose the sports you want to include for{' '}
             {dataSourceId === 'machina-core' ? 'Machina Core' : 'Sportradar'}.
           </p>
         </div>
-
+  
         {selectedSports.length > 0 && (
           <div className="flex gap-2 flex-wrap">
             {selectedSports.map((sportId: SportId) => {

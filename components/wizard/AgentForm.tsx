@@ -33,13 +33,7 @@ const agentTypes = [
 ] as const;
 
 const tools = [
-  {
-    id: 'crm',
-    label: 'CRM Integration',
-    description: 'Connect with customer relationship management systems',
-    icon: Database,
-    disabled: true,
-  },
+
   {
     id: 'search',
     label: 'Web Search',
@@ -48,10 +42,10 @@ const tools = [
     disabled: false,
   },
   {
-    id: 'memory',
-    label: 'Memory',
-    description: 'Maintain conversation context and history',
-    icon: Database,
+    id: 'custom',
+    label: 'Custom Data Upload',
+    description: 'Upload and use custom data sources',
+    icon: Upload,
     disabled: true,
   },
   {
@@ -62,12 +56,19 @@ const tools = [
     disabled: true,
   },
   {
-    id: 'custom',
-    label: 'Custom Data Upload',
-    description: 'Upload and use custom data sources',
-    icon: Upload,
+    id: 'crm',
+    label: 'CRM Integration',
+    description: 'Connect with customer relationship management systems',
+    icon: Database,
     disabled: true,
   },
+  {
+    id: 'memory',
+    label: 'Memory',
+    description: 'Maintain conversation context and history',
+    icon: Database,
+    disabled: true,
+  }
 ] as const;
 
 const outputFormats = [

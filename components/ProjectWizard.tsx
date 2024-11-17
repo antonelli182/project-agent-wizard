@@ -56,11 +56,11 @@ const sportEmojis: { [key: string]: string } = {
 
 const formatToolName = (tool: string) => {
   const names: { [key: string]: string } = {
-    crm: 'CRM Integration',
     search: 'Web Search',
-    memory: 'Memory',
-    sentiment: 'Fan Sentiment Analysis',
     custom: 'Custom Data Upload',
+    sentiment: 'Fan Sentiment Analysis',
+    crm: 'CRM Integration',
+    memory: 'Memory',
   };
   return names[tool] || tool;
 };
