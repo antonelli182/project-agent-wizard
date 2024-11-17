@@ -63,13 +63,13 @@ const dataSources = [
 ] as const;
 
 // Form schema
-const projectFormSchema = z.object({
+export const projectFormSchema = z.object({
   projectName: z.string().min(1, 'Project name is required'),
   dataSources: z.array(z.string()).min(1, 'At least one data source is required'),
   sportSelections: z.record(z.array(z.string()).min(1, 'At least one sport is required')),
 });
 
-type ProjectFormData = z.infer<typeof projectFormSchema>;
+export type ProjectFormData = z.infer<typeof projectFormSchema>;
 
 interface ProjectFormProps {
   form: UseFormReturn<ProjectFormData>;
@@ -402,7 +402,6 @@ export default function ProjectForm({ form }: ProjectFormProps) {
                                 >
                                   <DialogTrigger asChild>
                                     <Button
-                                      variant="primary"
                                       size="sm"
                                       className="bg-blue-500 text-white hover:bg-blue-600"
                                       onClick={(e) => e.stopPropagation()}
@@ -446,7 +445,7 @@ export default function ProjectForm({ form }: ProjectFormProps) {
                               )}
                               {isConnected && (
                                 <div className="flex items-center gap-2">
-                                  <Badge variant="success">
+                                  <Badge variant="default">
                                     <Activity className="h-4 w-4 mr-1" />
                                     Connected
                                   </Badge>
